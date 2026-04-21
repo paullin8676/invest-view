@@ -7,10 +7,13 @@
 | 功能 | 说明 |
 |------|------|
 | 📂 文件夹扫描 | 选择本地文件夹，自动识别并加载所有 `.md` 文件 |
+| 🔍 文件搜索 | 支持按文件名实时搜索过滤 |
+| 🗑️ 文件管理 | 删除文件记录，同时清除标签关联 |
+| 🔄 刷新保留 | 重新扫描文件夹，保留已有文件的标签关联 |
 | 🏷️ 标签管理 | 自定义标签颜色，为文件批量打标、筛选 |
-| 🗂️ 三种导航 | 按路径树 / 按标签分组 / 完整文件列表 |
 | 📄 Markdown 预览 | 支持 GFM 语法、表格、代码块，字体大小可调 |
 | 🔲 列表 / 网格视图 | 随时切换文件展示方式 |
+| 💾 IndexedDB 持久化 | 所有数据存储在浏览器本地，重启不丢失 |
 | 🔒 登录保护 | 简单的用户名密码认证，状态持久化 |
 
 ## 快速开始
@@ -52,6 +55,8 @@ VITE_AUTH_PASSWORD=your_password
 3. 在左侧导航栏中创建标签，为文件打标
 4. 通过「按标签」导航快速筛选分类文件
 5. 点击文件名即可预览 Markdown 内容
+6. 使用搜索框快速找到目标文件
+7. 删除不需要的文件记录
 
 ## 技术栈
 
@@ -60,23 +65,26 @@ VITE_AUTH_PASSWORD=your_password
 - **React Bootstrap 2** + **Bootstrap 5** UI
 - **react-markdown** + **remark-gfm** Markdown 渲染
 - **Lucide React** 图标
+- **IndexedDB** 数据持久化
 
 ## 数据说明
 
-所有数据均存储在浏览器 `localStorage`，无后端依赖：
+所有数据均存储在浏览器 IndexedDB 中，无后端依赖：
 
-| 键名 | 内容 |
+| 数据 | 说明 |
 |------|------|
-| `investview-settings` | 标签、文件关联、路径配置等 |
-| `investview-auth` | 登录状态 |
+| `app-settings` | 标签、文件列表（含内容和标签关联）、字体大小 |
+| `preview-file` | 当前预览的 Markdown 文件 |
+| `user-auth` | 登录状态 |
 
 ## 项目结构
 
 ```
 invest-view/
 ├── src/
-│   ├── App.tsx          # 主应用组件（全部业务逻辑）
+│   ├── App.tsx          # 主应用组件
 │   ├── App.css          # 自定义样式
+│   ├── db.ts            # IndexedDB 操作封装
 │   ├── main.tsx         # 入口文件
 │   └── types/
 │       └── index.ts     # TypeScript 类型定义
@@ -92,7 +100,7 @@ invest-view/
 ## 后续计划 (v1.1+)
 
 - [ ] 暗色主题切换
-- [ ] 全文搜索
+- [ ] 全文搜索（Markdown 内容）
 - [ ] 文件排序（名称 / 时间 / 标签）
 - [ ] 数据导出（CSV / JSON）
 - [ ] 标签批量操作

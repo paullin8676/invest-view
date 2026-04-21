@@ -4,8 +4,8 @@ import remarkGfm from 'remark-gfm'
 import { Badge, Button, Form, InputGroup, Modal } from 'react-bootstrap'
 import {
   Folder, FileText, Tags, X,
-  Database, Eye, MapPin, Tag as TagIcon, Files,
-  Minus, Plus, ChevronRight, ChevronDown, List, Grid, LogOut
+  Database, Eye, Tag as TagIcon, Files,
+  Minus, Plus, ChevronRight, ChevronDown, List, Grid, LogOut, Trash
 } from 'lucide-react'
 import type { Tag, MarkdownFile, AppSettings } from './types'
 import { initDB, saveSettings, loadSettings, savePreviewFile, loadPreviewFile, saveAuth, loadAuth, clearAuth } from './db'
@@ -24,7 +24,6 @@ const USER_CONFIG = {
 
 // 默认设置
 const DEFAULT_SETTINGS: AppSettings = {
-  sourcePath: '',
   fontSize: 16,
   tags: [],
   files: []
@@ -68,6 +67,9 @@ function App() {
 
   // 文件列表视图
   const [fileListView, setFileListView] = useState<'grid' | 'list'>('list')
+
+  // 文件搜索
+  const [searchQuery, setSearchQuery] = useState('')
 
   // 加载设置和认证状态（从 IndexedDB）
   useEffect(() => {
@@ -158,7 +160,6 @@ function App() {
 
         setSettings(prev => ({
           ...prev,
-          sourcePath: folderPath,
           files: mdFiles
         }))
       }
@@ -168,12 +169,6 @@ function App() {
 
   // 刷新文件列表（保留已有文件的标签关联）
   const handleRefreshFiles = async () => {
-    if (!settings.sourcePath) {
-      // 未设置过路径，先选择文件夹
-      handleSelectFolder()
-      return
-    }
-
     const input = document.createElement('input')
     input.type = 'file'
     input.webkitdirectory = true
@@ -182,12 +177,11 @@ function App() {
       if (files && files.length > 0) {
         const folderPath = files[0].webkitRelativePath.split('/')[0]
         const mdFiles: MarkdownFile[] = []
-
         for (let i = 0; i < files.length; i++) {
           const file = files[i]
           if (file.name.endsWith('.md')) {
             const content = await file.text()
-            // 查找已有文件的标签关联（按 name 匹配）
+            // 保留已有文件的标签关联
             const existingFile = settings.files.find(f => f.name === file.name.replace(/\.md$/i, ''))
             mdFiles.push({
               path: `${folderPath}/${file.webkitRelativePath}`,
@@ -197,12 +191,9 @@ function App() {
             })
           }
         }
-
         mdFiles.sort((a, b) => a.path.localeCompare(b.path))
-
         setSettings(prev => ({
           ...prev,
-          sourcePath: folderPath,
           files: mdFiles
         }))
       }
@@ -299,6 +290,22 @@ function App() {
       setPreviewFile({ ...previewFile, tagIds: newTagIds })
     }
   }
+
+  // 删除文件（同时删除标签关联）
+  const handleDeleteFile = (filePath: string) => {
+    setSettings(prev => ({
+      ...prev,
+      files: prev.files.filter(f => f.path !== filePath)
+    }))
+    if (previewFile?.path === filePath) {
+      setPreviewFile(null)
+    }
+  }
+
+  // 过滤后的文件列表
+  const filteredFiles = searchQuery
+    ? settings.files.filter(f => f.name.toLowerCase().includes(searchQuery.toLowerCase()))
+    : settings.files
 
   // 加载中
   if (isLoading) {
@@ -456,11 +463,11 @@ function App() {
           {expandedMainMenu && (
             <div className="nav-section-items">
               <div
-                className={`nav-item ${selectedMainItem === 'path' ? 'active' : ''}`}
-                onClick={() => { setSelectedMainItem('path'); setMenuSection('main'); setPreviewFile(null); }}
+                className={`nav-item ${selectedMainItem === 'files' ? 'active' : ''}`}
+                onClick={() => { setSelectedMainItem('files'); setMenuSection('main'); setPreviewFile(null); }}
               >
-                <MapPin size={16} className="me-2" />
-                <span>路径配置</span>
+                <Files size={16} className="me-2" />
+                <span>文件管理</span>
               </div>
               <div
                 className={`nav-item ${selectedMainItem === 'tags' ? 'active' : ''}`}
@@ -468,13 +475,6 @@ function App() {
               >
                 <TagIcon size={16} className="me-2" />
                 <span>标签管理</span>
-              </div>
-              <div
-                className={`nav-item ${selectedMainItem === 'files' ? 'active' : ''}`}
-                onClick={() => { setSelectedMainItem('files'); setMenuSection('main'); setPreviewFile(null); }}
-              >
-                <Files size={16} className="me-2" />
-                <span>文件管理</span>
               </div>
             </div>
           )}
@@ -513,33 +513,6 @@ function App() {
                     {previewFile.content || ''}
                   </ReactMarkdown>
                 </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* 主数据页面 - 无预览文件时显示 */}
-        {!previewFile && menuSection === 'main' && selectedMainItem === 'path' && (
-          <div className="page-content fade-in">
-            <h4 className="mb-4"><MapPin size={24} className="me-2 text-primary" />路径配置</h4>
-            <div className="card">
-              <div className="card-body">
-                <Form.Group className="mb-3">
-                  <Form.Label>Markdown 文件夹路径</Form.Label>
-                  <InputGroup>
-                    <Form.Control
-                      value={settings.sourcePath || '未设置'}
-                      readOnly
-                      placeholder="请选择文件夹"
-                    />
-                    <Button variant="primary" onClick={handleSelectFolder}>
-                      <Folder size={16} className="me-1" /> 选择文件夹
-                    </Button>
-                  </InputGroup>
-                  <Form.Text className="text-muted">
-                    当前文件数量: {settings.files.length}
-                  </Form.Text>
-                </Form.Group>
               </div>
             </div>
           </div>
@@ -641,10 +614,22 @@ function App() {
             ) : (
               <>
                 <div className="d-flex align-items-center justify-content-between mb-3">
-                  <span className="text-muted">共 {settings.files.length} 个文件</span>
                   <div className="d-flex align-items-center gap-2">
+                    <span className="text-muted">
+                      {searchQuery ? `匹配 ${filteredFiles.length} / ${settings.files.length} 个文件` : `共 ${settings.files.length} 个文件`}
+                    </span>
+                  </div>
+                  <div className="d-flex align-items-center gap-2">
+                    <Form.Control
+                      type="text"
+                      placeholder="搜索文件名..."
+                      size="sm"
+                      value={searchQuery}
+                      onChange={e => setSearchQuery(e.target.value)}
+                      style={{ width: 180 }}
+                    />
                     <Button variant="outline-secondary" size="sm" onClick={handleRefreshFiles}>
-                      <Folder size={14} className="me-1" /> 刷新文件
+                      <Folder size={14} className="me-1" /> 刷新
                     </Button>
                     <div className="btn-group btn-group-sm">
                       <button
@@ -664,9 +649,13 @@ function App() {
                 </div>
                 <div className="card">
                   <div className="card-body p-0" style={{ maxHeight: 'calc(100vh - 200px)', overflow: 'auto' }}>
-                    {fileListView === 'list' ? (
+                    {filteredFiles.length === 0 ? (
+                      <div className="p-4 text-center text-muted">
+                        {searchQuery ? '没有匹配的文件' : '暂无文件'}
+                      </div>
+                    ) : fileListView === 'list' ? (
                       <div className="list-group list-group-flush">
-                        {settings.files.map(file => (
+                        {filteredFiles.map(file => (
                           <div key={file.path} className="list-group-item">
                             <div className="d-flex align-items-center justify-content-between flex-wrap gap-2">
                               <div className="d-flex align-items-center gap-2">
@@ -698,6 +687,14 @@ function App() {
                                     </Badge>
                                   )
                                 })}
+                                <Button
+                                  variant="outline-danger"
+                                  size="sm"
+                                  onClick={() => handleDeleteFile(file.path)}
+                                  title="删除文件"
+                                >
+                                  <Trash size={14} />
+                                </Button>
                               </div>
                             </div>
                           </div>
@@ -705,12 +702,21 @@ function App() {
                       </div>
                     ) : (
                       <div className="row g-3 p-3">
-                        {settings.files.map(file => (
+                        {filteredFiles.map(file => (
                           <div key={file.path} className="col-6 col-md-4 col-lg-3">
                             <div className="card h-100">
                               <div className="card-body d-flex flex-column">
                                 <div className="d-flex align-items-start justify-content-between mb-2">
                                   <FileText size={24} className="text-primary" />
+                                  <Button
+                                    variant="outline-danger"
+                                    size="sm"
+                                    onClick={() => handleDeleteFile(file.path)}
+                                    title="删除文件"
+                                    style={{ padding: '0.1rem 0.3rem' }}
+                                  >
+                                    <Trash size={12} />
+                                  </Button>
                                 </div>
                                 <div className="text-truncate fw-medium mb-2">{file.name}</div>
                                 <div className="d-flex gap-1 flex-wrap mt-auto">
@@ -755,15 +761,14 @@ function App() {
               <div className="col-md-4">
                 <div
                   className="card h-100 cursor-pointer hover-card"
-                  onClick={() => setSelectedMainItem('path')}
+                  onClick={() => setSelectedMainItem('files')}
                 >
                   <div className="card-body text-center">
-                    <MapPin size={48} className="text-primary mb-3" />
-                    <h5>路径配置</h5>
+                    <Folder size={48} className="text-primary mb-3" />
+                    <h5>文件管理</h5>
                     <p className="text-muted small mb-0">
-                      {settings.sourcePath ? settings.sourcePath : '未设置'}
+                      {settings.files.length > 0 ? `${settings.files.length} 个文件` : '点击选择文件夹'}
                     </p>
-                    <p className="text-muted small">{settings.files.length} 个文件</p>
                   </div>
                 </div>
               </div>
@@ -776,18 +781,6 @@ function App() {
                     <TagIcon size={48} className="text-success mb-3" />
                     <h5>标签管理</h5>
                     <p className="text-muted small">{settings.tags.length} 个标签</p>
-                  </div>
-                </div>
-              </div>
-              <div className="col-md-4">
-                <div
-                  className="card h-100 cursor-pointer hover-card"
-                  onClick={() => setSelectedMainItem('files')}
-                >
-                  <div className="card-body text-center">
-                    <Files size={48} className="text-warning mb-3" />
-                    <h5>文件管理</h5>
-                    <p className="text-muted small">{settings.files.length} 个文件</p>
                   </div>
                 </div>
               </div>

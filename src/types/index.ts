@@ -12,7 +12,6 @@ export interface MarkdownFile {
 }
 
 export interface AppSettings {
-  sourcePath: string
   fontSize: number
   tags: Tag[]
   files: MarkdownFile[]
