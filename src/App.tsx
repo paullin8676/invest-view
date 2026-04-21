@@ -8,6 +8,7 @@ import {
   Minus, Plus, ChevronRight, ChevronDown, List, Grid, LogOut
 } from 'lucide-react'
 import type { Tag, MarkdownFile, AppSettings } from './types'
+import { initDB, saveSettings, loadSettings, savePreviewFile, loadPreviewFile, saveAuth, loadAuth, clearAuth } from './db'
 
 // 预定义标签颜色
 const TAG_COLORS = [
@@ -28,10 +29,6 @@ const DEFAULT_SETTINGS: AppSettings = {
   tags: [],
   files: []
 }
-
-// localStorage 键名
-const STORAGE_KEY = 'investview-settings'
-const AUTH_KEY = 'investview-auth'
 
 // 用户信息类型
 interface User {
@@ -54,6 +51,9 @@ function App() {
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS)
   const [previewFile, setPreviewFile] = useState<MarkdownFile | null>(null)
 
+  // 数据加载状态（IndexedDB 异步加载）
+  const [isLoading, setIsLoading] = useState(true)
+
   // 导航状态
   const [menuSection, setMenuSection] = useState<MenuSection>('main')
   const [expandedMainMenu, setExpandedMainMenu] = useState(true)
@@ -69,47 +69,38 @@ function App() {
   // 文件列表视图
   const [fileListView, setFileListView] = useState<'grid' | 'list'>('list')
 
-  // 加载设置和认证状态
+  // 加载设置和认证状态（从 IndexedDB）
   useEffect(() => {
-    // 加载认证状态
-    const savedAuth = localStorage.getItem(AUTH_KEY)
-    if (savedAuth) {
-      try {
-        const parsedAuth = JSON.parse(savedAuth)
-        setUser(parsedAuth)
+    Promise.all([loadAuth(), loadSettings(), loadPreviewFile()]).then(([auth, savedSettings, savedPreview]) => {
+      if (auth) {
+        setUser(auth)
         setIsAuthenticated(true)
-      } catch (e) {
-        console.error('Failed to load auth:', e)
       }
-    }
-
-    // 加载设置
-    const saved = localStorage.getItem(STORAGE_KEY)
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved)
-        setSettings({ ...DEFAULT_SETTINGS, ...parsed })
-        if (parsed.previewFile) setPreviewFile(parsed.previewFile)
-      } catch (e) {
-        console.error('Failed to load settings:', e)
+      if (savedSettings) {
+        setSettings({ ...DEFAULT_SETTINGS, ...savedSettings })
       }
-    }
+      if (savedPreview) {
+        setPreviewFile(savedPreview)
+      }
+      setIsLoading(false)
+    }).catch(e => {
+      console.error('Failed to load data:', e)
+      setIsLoading(false)
+    })
   }, [])
 
-  // 保存设置
-  const saveSettings = useCallback(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({
-      ...settings,
-      previewFile
-    }))
+  // 保存设置（到 IndexedDB）
+  const saveSettingsToDB = useCallback(() => {
+    saveSettings(settings)
+    savePreviewFile(previewFile)
   }, [settings, previewFile])
 
   // 自动保存
   useEffect(() => {
-    if (isAuthenticated) {
-      saveSettings()
+    if (isAuthenticated && !isLoading) {
+      saveSettingsToDB()
     }
-  }, [settings, saveSettings, isAuthenticated])
+  }, [settings, saveSettingsToDB, isAuthenticated, isLoading])
 
   // 处理登录
   const handleLogin = (e: React.FormEvent) => {
@@ -122,8 +113,8 @@ function App() {
       setUser(userInfo)
       setIsAuthenticated(true)
       setLoginError('')
-      // 保存登录状态
-      localStorage.setItem(AUTH_KEY, JSON.stringify(userInfo))
+      // 保存登录状态到 IndexedDB
+      saveAuth(userInfo)
     } else {
       setLoginError('用户名或密码错误')
     }
@@ -135,8 +126,8 @@ function App() {
     setUser(null)
     setLoginForm({ username: '', password: '' })
     setPreviewFile(null)
-    // 清除登录状态
-    localStorage.removeItem(AUTH_KEY)
+    // 清除登录状态（IndexedDB）
+    clearAuth()
   }
 
   // 选择文件夹（首次选择）
@@ -307,6 +298,20 @@ function App() {
     if (previewFile?.path === file.path) {
       setPreviewFile({ ...previewFile, tagIds: newTagIds })
     }
+  }
+
+  // 加载中
+  if (isLoading) {
+    return (
+      <div className="login-page">
+        <div className="card login-card">
+          <div className="card-body p-5 text-center">
+            <div className="spinner-border text-primary mb-3" role="status" />
+            <p className="text-muted">加载数据...</p>
+          </div>
+        </div>
+      </div>
+    )
   }
 
   // 登录页面
