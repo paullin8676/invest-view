@@ -139,7 +139,7 @@ function App() {
     localStorage.removeItem(AUTH_KEY)
   }
 
-  // 选择文件夹
+  // 选择文件夹（首次选择）
   const handleSelectFolder = async () => {
     const input = document.createElement('input')
     input.type = 'file'
@@ -158,6 +158,50 @@ function App() {
               path: `${folderPath}/${file.webkitRelativePath}`,
               name: file.name.replace(/\.md$/i, ''),
               tagIds: [],
+              content
+            })
+          }
+        }
+
+        mdFiles.sort((a, b) => a.path.localeCompare(b.path))
+
+        setSettings(prev => ({
+          ...prev,
+          sourcePath: folderPath,
+          files: mdFiles
+        }))
+      }
+    }
+    input.click()
+  }
+
+  // 刷新文件列表（保留已有文件的标签关联）
+  const handleRefreshFiles = async () => {
+    if (!settings.sourcePath) {
+      // 未设置过路径，先选择文件夹
+      handleSelectFolder()
+      return
+    }
+
+    const input = document.createElement('input')
+    input.type = 'file'
+    input.webkitdirectory = true
+    input.onchange = async (e) => {
+      const files = (e.target as HTMLInputElement).files
+      if (files && files.length > 0) {
+        const folderPath = files[0].webkitRelativePath.split('/')[0]
+        const mdFiles: MarkdownFile[] = []
+
+        for (let i = 0; i < files.length; i++) {
+          const file = files[i]
+          if (file.name.endsWith('.md')) {
+            const content = await file.text()
+            // 查找已有文件的标签关联（按 name 匹配）
+            const existingFile = settings.files.find(f => f.name === file.name.replace(/\.md$/i, ''))
+            mdFiles.push({
+              path: `${folderPath}/${file.webkitRelativePath}`,
+              name: file.name.replace(/\.md$/i, ''),
+              tagIds: existingFile ? existingFile.tagIds : [],
               content
             })
           }
@@ -593,19 +637,24 @@ function App() {
               <>
                 <div className="d-flex align-items-center justify-content-between mb-3">
                   <span className="text-muted">共 {settings.files.length} 个文件</span>
-                  <div className="btn-group btn-group-sm">
-                    <button
-                      className={`btn ${fileListView === 'list' ? 'btn-primary' : 'btn-outline-secondary'}`}
-                      onClick={() => setFileListView('list')}
-                    >
-                      <List size={14} />
-                    </button>
-                    <button
-                      className={`btn ${fileListView === 'grid' ? 'btn-primary' : 'btn-outline-secondary'}`}
-                      onClick={() => setFileListView('grid')}
-                    >
-                      <Grid size={14} />
-                    </button>
+                  <div className="d-flex align-items-center gap-2">
+                    <Button variant="outline-secondary" size="sm" onClick={handleRefreshFiles}>
+                      <Folder size={14} className="me-1" /> 刷新文件
+                    </Button>
+                    <div className="btn-group btn-group-sm">
+                      <button
+                        className={`btn ${fileListView === 'list' ? 'btn-primary' : 'btn-outline-secondary'}`}
+                        onClick={() => setFileListView('list')}
+                      >
+                        <List size={14} />
+                      </button>
+                      <button
+                        className={`btn ${fileListView === 'grid' ? 'btn-primary' : 'btn-outline-secondary'}`}
+                        onClick={() => setFileListView('grid')}
+                      >
+                        <Grid size={14} />
+                      </button>
+                    </div>
                   </div>
                 </div>
                 <div className="card">
